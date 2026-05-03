@@ -1,7 +1,7 @@
 
 ---
 
-# 🦅 Project HAWK — RC Autonomous Car
+# Project HAWK — RC Autonomous Car
 
 **Course:** EC-310 Microprocessor & Microcontroller Based Design
 **Institution:** NUST College of Electrical & Mechanical Engineering (CEME), Department of Computer Engineering
