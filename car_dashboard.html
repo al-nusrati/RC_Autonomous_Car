@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32-S3 HAWK — Live Monitor (Polling)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0a0d0f;
+        --surface: #111518;
+        --surface2: #181d21;
+        --border: #1e2830;
+        --accent: #00e5a0;
+        --accent2: #f0a500;
+        --danger: #ff4444;
+        --text: #c8d8e0;
+        --text-dim: #4a6070;
+        --green: #00e5a0;
+        --amber: #f0a500;
+        --red: #ff4444;
+        --blue: #3a9fd8;
+        --font-mono: "Share Tech Mono", monospace;
+        --font-display: "Orbitron", monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 13px;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.03) 2px,
+          rgba(0, 0, 0, 0.03) 4px
+        );
+        pointer-events: none;
+        z-index: 9999;
+      }
+      .header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 10px 20px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      .logo {
+        font-family: var(--font-display);
+        font-size: 15px;
+        font-weight: 900;
+        color: var(--accent);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+      .logo span {
+        color: var(--amber);
+      }
+      .header-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .ip-input {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        padding: 5px 10px;
+        border-radius: 3px;
+        width: 140px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .ip-input:focus {
+        border-color: var(--accent);
+      }
+      .btn {
+        background: transparent;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 5px 14px;
+        border-radius: 3px;
+        cursor: pointer;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: all 0.15s;
+      }
+      .btn:hover {
+        background: var(--accent);
+        color: var(--bg);
+      }
+      .btn.demo {
+        border-color: var(--amber);
+        color: var(--amber);
+      }
+      .btn.demo:hover {
+        background: var(--amber);
+        color: var(--bg);
+      }
+      .btn.stop {
+        border-color: var(--red);
+        color: var(--red);
+      }
+      .btn.stop:hover {
+        background: var(--red);
+        color: var(--bg);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--text-dim);
+        display: inline-block;
+        margin-right: 6px;
+        transition: background 0.3s;
+      }
+      .status-dot.connected {
+        background: var(--accent);
+        box-shadow: 0 0 6px var(--accent);
+        animation: pulse 2s infinite;
+      }
+      .status-dot.demo {
+        background: var(--amber);
+        box-shadow: 0 0 6px var(--amber);
+        animation: pulse 2s infinite;
+      }
+      .status-dot.error {
+        background: var(--red);
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .status-text {
+        font-size: 11px;
+        letter-spacing: 1px;
+        color: var(--text-dim);
+      }
+
+      .main {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        grid-template-rows: auto auto;
+        gap: 1px;
+        background: var(--border);
+        min-height: calc(100vh - 52px);
+      }
+      .panel {
+        background: var(--surface);
+        padding: 16px;
+      }
+      .panel-label {
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .panel-label::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+      }
+      .camera-panel {
+        grid-row: 1 / 3;
+      }
+      .camera-wrap {
+        position: relative;
+        background: #000;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+        aspect-ratio: 1/1;
+        max-width: 480px;
+        margin: 0 auto;
+      }
+      .camera-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .camera-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+      }
+      .cam-corner {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-color: var(--accent);
+        border-style: solid;
+        opacity: 0.7;
+      }
+      .cam-corner.tl {
+        top: 8px;
+        left: 8px;
+        border-width: 2px 0 0 2px;
+      }
+      .cam-corner.tr {
+        top: 8px;
+        right: 8px;
+        border-width: 2px 2px 0 0;
+      }
+      .cam-corner.bl {
+        bottom: 8px;
+        left: 8px;
+        border-width: 0 0 2px 2px;
+      }
+      .cam-corner.br {
+        bottom: 8px;
+        right: 8px;
+        border-width: 0 2px 2px 0;
+      }
+      .cam-fps {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: var(--accent);
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 2px;
+        letter-spacing: 1px;
+      }
+      .cam-res {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: var(--text-dim);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 2px;
+        letter-spacing: 1px;
+      }
+      .cam-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 8px;
+        color: var(--text-dim);
+      }
+      .steering-panel {
+        display: flex;
+        flex-direction: column;
+      }
+      .direction-display {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin: 8px 0 16px;
+      }
+      .dir-btn {
+        width: 56px;
+        height: 56px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        color: var(--text-dim);
+        transition: all 0.1s;
+      }
+      .dir-btn.active-left {
+        border-color: var(--amber);
+        color: var(--amber);
+        background: rgba(240, 165, 0, 0.1);
+        box-shadow: 0 0 12px rgba(240, 165, 0, 0.3);
+      }
+      .dir-btn.active-straight {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(0, 229, 160, 0.1);
+        box-shadow: 0 0 12px rgba(0, 229, 160, 0.3);
+      }
+      .dir-btn.active-right {
+        border-color: var(--amber);
+        color: var(--amber);
+        background: rgba(240, 165, 0, 0.1);
+        box-shadow: 0 0 12px rgba(240, 165, 0, 0.3);
+      }
+
+      .angle-display {
+        text-align: center;
+        margin-bottom: 12px;
+      }
+      .angle-value {
+        font-family: var(--font-display);
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--accent);
+        line-height: 1;
+        transition: color 0.3s;
+      }
+      .angle-value.turning {
+        color: var(--amber);
+      }
+      .angle-label {
+        font-size: 10px;
+        color: var(--text-dim);
+        letter-spacing: 2px;
+        margin-top: 4px;
+      }
+
+      .steering-arrow {
+        display: flex;
+        justify-content: center;
+        margin: 4px 0 8px;
+      }
+
+      .metrics-panel {
+      }
+      .metric-row {
+        margin-bottom: 14px;
+      }
+      .metric-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 5px;
+      }
+      .metric-name {
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+      }
+      .metric-val {
+        font-family: var(--font-display);
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .metric-val.good {
+        color: var(--accent);
+      }
+      .metric-val.warn {
+        color: var(--amber);
+      }
+      .metric-val.bad {
+        color: var(--red);
+      }
+
+      .bar-track {
+        height: 5px;
+        background: var(--surface2);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition:
+          width 0.4s ease,
+          background 0.3s;
+      }
+
+      .gauge-wrap {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 8px;
+      }
+      .gauge-svg {
+        overflow: visible;
+      }
+
+      .log-panel {
+        grid-column: 1 / -1;
+        background: var(--surface);
+        max-height: 130px;
+      }
+      .log-scroll {
+        height: 90px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+      }
+      .log-line {
+        font-size: 11px;
+        color: var(--text-dim);
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(30, 40, 48, 0.5);
+        display: flex;
+        gap: 12px;
+      }
+      .log-time {
+        color: var(--text-dim);
+        opacity: 0.6;
+        min-width: 80px;
+      }
+      .log-line.info .log-msg {
+        color: var(--accent);
+      }
+      .log-line.warn .log-msg {
+        color: var(--amber);
+      }
+      .log-line.error .log-msg {
+        color: var(--red);
+      }
+      .log-line.data .log-msg {
+        color: var(--text);
+      }
+
+      .model-badges {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .badge {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 2px;
+        letter-spacing: 1px;
+      }
+      .badge.green {
+        border-color: rgba(0, 229, 160, 0.3);
+        color: var(--accent);
+      }
+      .badge.amber {
+        border-color: rgba(240, 165, 0, 0.3);
+        color: var(--amber);
+      }
+      .badge.blue {
+        border-color: rgba(58, 159, 216, 0.3);
+        color: var(--blue);
+      }
+
+      .no-camera-text {
+        font-size: 11px;
+        color: var(--text-dim);
+        text-align: center;
+        margin-top: 8px;
+        letter-spacing: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo">ESP32‑S3 <span>HAWK</span></div>
+      <div style="color: var(--text-dim); font-size: 11px; letter-spacing: 1px">
+        MobileNetV2‑0.35 &nbsp;|&nbsp; INT8 &nbsp;|&nbsp; 128×128 RGB
+      </div>
+      <div class="header-right">
+        <input
+          class="ip-input"
+          id="ipInput"
+          type="text"
+          placeholder="192.168.4.1"
+          value="192.168.4.1"
+        />
+        <button class="btn" onclick="connectTocar()">CONNECT</button>
+        <button class="btn demo" onclick="startDemo()">DEMO MODE</button>
+        <button
+          class="btn stop"
+          onclick="disconnect()"
+          style="display: none"
+          id="stopBtn"
+        >
+          DISCONNECT
+        </button>
+        <span
+          ><span class="status-dot" id="statusDot"></span
+          ><span class="status-text" id="statusText">OFFLINE</span></span
+        >
+      </div>
+    </div>
+
+    <div class="main">
+      <!-- Camera -->
+      <div class="panel camera-panel">
+        <div class="panel-label">CAMERA FEED</div>
+        <div class="model-badges">
+          <span class="badge green">128×128 RGB</span>
+          <span class="badge amber">OV3660 DVP</span>
+          <span class="badge blue">20MHz XCLK</span>
+          <span class="badge">PSRAM BUFFER</span>
+        </div>
+        <div class="camera-wrap" id="cameraWrap">
+          <div id="camPlaceholder" class="cam-placeholder">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#4a6070"
+              stroke-width="1.5"
+            >
+              <path d="M23 7l-7 5 7 5V7z" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            </svg>
+            <p>NO SIGNAL</p>
+            <p style="font-size: 10px">Enter IP and connect</p>
+          </div>
+          <img id="cameraImg" src="" alt="Camera feed" style="display: none" />
+          <div class="camera-overlay" id="camOverlay" style="display: none">
+            <div class="cam-corner tl"></div>
+            <div class="cam-corner tr"></div>
+            <div class="cam-corner bl"></div>
+            <div class="cam-corner br"></div>
+            <div class="cam-fps" id="fpsDisplay">-- FPS</div>
+            <div class="cam-res">128 × 128</div>
+          </div>
+        </div>
+        <p class="no-camera-text" id="camNote" style="display: none">
+          Stream: http://&lt;ip&gt;/stream &nbsp;|&nbsp; Status:
+          http://&lt;ip&gt;/status
+        </p>
+      </div>
+
+      <!-- Steering -->
+      <div class="panel steering-panel">
+        <div class="panel-label">STEERING</div>
+        <div class="direction-display">
+          <div class="dir-btn" id="dirLeft">&#8592;</div>
+          <div class="dir-btn" id="dirStraight">&#8593;</div>
+          <div class="dir-btn" id="dirRight">&#8594;</div>
+        </div>
+        <div class="angle-display">
+          <div class="angle-value" id="angleVal">0.0°</div>
+          <div class="angle-label">STEERING ANGLE</div>
+        </div>
+        <div class="steering-arrow">
+          <svg id="arrowSvg" width="80" height="80" viewBox="0 0 80 80">
+            <g
+              id="arrowGroup"
+              style="
+                transform-origin: 40px 40px;
+                transition: transform 0.25s ease;
+              "
+            >
+              <polygon
+                id="arrowShape"
+                points="40,8 56,40 48,40 48,72 32,72 32,40 24,40"
+                fill="var(--accent)"
+                opacity="0.9"
+              />
+            </g>
+          </svg>
+        </div>
+        <div style="text-align: center; margin-bottom: 16px">
+          <span
+            id="dirLabel"
+            style="
+              font-family: var(--font-display);
+              font-size: 13px;
+              letter-spacing: 3px;
+              color: var(--accent);
+            "
+            >AWAITING</span
+          >
+        </div>
+        <hr
+          style="
+            border: none;
+            border-top: 1px solid var(--border);
+            margin-bottom: 14px;
+          "
+        />
+        <div class="panel-label">INFERENCE LATENCY</div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" width="140" height="80" viewBox="0 0 140 80">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00e5a0" />
+                <stop offset="45%" stop-color="#f0a500" />
+                <stop offset="100%" stop-color="#ff4444" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M 10 75 A 60 60 0 0 1 130 75"
+              fill="none"
+              stroke="#1e2830"
+              stroke-width="8"
+              stroke-linecap="round"
+            />
+            <path
+              id="gaugeFill"
+              d="M 10 75 A 60 60 0 0 1 130 75"
+              fill="none"
+              stroke="url(#gaugeGrad)"
+              stroke-width="8"
+              stroke-linecap="round"
+              stroke-dasharray="188"
+              stroke-dashoffset="188"
+              style="transition: stroke-dashoffset 0.4s ease"
+            />
+            <line
+              id="gaugeNeedle"
+              x1="70"
+              y1="75"
+              x2="70"
+              y2="22"
+              stroke="#c8d8e0"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              style="
+                transform-origin: 70px 75px;
+                transform: rotate(0deg);
+                transition: transform 0.4s ease;
+              "
+            />
+            <circle
+              cx="70"
+              cy="75"
+              r="4"
+              fill="var(--surface)"
+              stroke="#c8d8e0"
+              stroke-width="1.5"
+            />
+            <text
+              x="8"
+              y="76"
+              font-size="9"
+              fill="#4a6070"
+              font-family="Share Tech Mono,monospace"
+            >
+              0
+            </text>
+            <text
+              x="60"
+              y="16"
+              font-size="9"
+              fill="#4a6070"
+              font-family="Share Tech Mono,monospace"
+            >
+              67
+            </text>
+            <text
+              x="124"
+              y="76"
+              font-size="9"
+              fill="#4a6070"
+              font-family="Share Tech Mono,monospace"
+            >
+              133
+            </text>
+            <text
+              id="latencyGaugeVal"
+              x="70"
+              y="62"
+              font-size="14"
+              font-weight="700"
+              fill="#00e5a0"
+              text-anchor="middle"
+              font-family="Orbitron,monospace"
+            >
+              --
+            </text>
+            <text
+              x="70"
+              y="74"
+              font-size="8"
+              fill="#4a6070"
+              text-anchor="middle"
+              font-family="Share Tech Mono,monospace"
+            >
+              ms
+            </text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="panel metrics-panel">
+        <div class="panel-label">SYSTEM METRICS</div>
+        <div class="metric-row">
+          <div class="metric-header">
+            <span class="metric-name">FREE HEAP</span
+            ><span class="metric-val good" id="heapVal">-- KB</span>
+          </div>
+          <div class="bar-track">
+            <div
+              class="bar-fill"
+              id="heapBar"
+              style="width: 0%; background: var(--accent)"
+            ></div>
+          </div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-header">
+            <span class="metric-name">TENSOR ARENA</span
+            ><span class="metric-val amber" id="tensorVal">-- / 1024 KB</span>
+          </div>
+          <div class="bar-track">
+            <div
+              class="bar-fill"
+              id="tensorBar"
+              style="width: 0%; background: var(--amber)"
+            ></div>
+          </div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-header">
+            <span class="metric-name">LATENCY</span
+            ><span class="metric-val good" id="latencyVal">-- ms</span>
+          </div>
+          <div class="bar-track">
+            <div
+              class="bar-fill"
+              id="latencyBar"
+              style="width: 0%; background: var(--accent)"
+            ></div>
+          </div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-header">
+            <span class="metric-name">FRAME RATE</span
+            ><span class="metric-val" id="fpsVal">-- fps</span>
+          </div>
+          <div class="bar-track">
+            <div
+              class="bar-fill"
+              id="fpsBar"
+              style="width: 0%; background: var(--blue)"
+            ></div>
+          </div>
+        </div>
+        <hr
+          style="
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 12px 0;
+          "
+        />
+        <div class="panel-label">MODEL INFO</div>
+        <div class="model-badges">
+          <span class="badge green">MobileNetV2‑0.35</span>
+          <span class="badge amber">599 KB</span>
+          <span class="badge blue">INT8 Quant</span>
+          <span class="badge">Input [1,128,128,3]</span>
+        </div>
+        <div
+          style="
+            font-size: 10px;
+            color: var(--text-dim);
+            line-height: 1.8;
+            letter-spacing: 0.5px;
+          "
+        >
+          <div>
+            Target latency: <span style="color: var(--accent)">&lt;133 ms</span>
+          </div>
+          <div>Norm: [-1, 1] &nbsp;|&nbsp; Yaw‑rate damping</div>
+          <div>Ultrasonic + MPU‑6050 fusion active</div>
+        </div>
+        <hr
+          style="
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 12px 0;
+          "
+        />
+        <div class="panel-label">POWER CHAIN</div>
+        <div style="font-size: 10px; color: var(--text-dim); line-height: 1.9">
+          <div>18650×2 → TP4056 → 7.4V</div>
+          <div>└─ L298N motor power (direct)</div>
+          <div>└─ LM2596 → 5.0V → AMS1117</div>
+          <div>&nbsp;&nbsp;&nbsp;→ 3.3V → ESP32 + OV3660 + sensors</div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="panel log-panel">
+        <div class="panel-label">EVENT LOG</div>
+        <div class="log-scroll" id="logScroll"></div>
+      </div>
+    </div>
+
+    <script>
+      let pollingInterval = null;
+      let demoInterval = null;
+      let isDemo = false;
+      let frameCount = 0;
+      let lastFpsTime = Date.now();
+      let fpsCalcInterval = null;
+
+      function log(msg, type = "data") {
+        const el = document.getElementById("logScroll");
+        const now = new Date();
+        const t =
+          now.toTimeString().slice(0, 8) +
+          "." +
+          String(now.getMilliseconds()).padStart(3, "0");
+        const line = document.createElement("div");
+        line.className = "log-line " + type;
+        line.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${msg}</span>`;
+        el.appendChild(line);
+        if (el.children.length > 100) el.removeChild(el.firstChild);
+        el.scrollTop = el.scrollHeight;
+      }
+
+      function setStatus(state) {
+        const dot = document.getElementById("statusDot");
+        const txt = document.getElementById("statusText");
+        const stop = document.getElementById("stopBtn");
+        dot.className = "status-dot " + state;
+        if (state === "connected") {
+          txt.textContent = "CONNECTED";
+          stop.style.display = "";
+        } else if (state === "demo") {
+          txt.textContent = "DEMO";
+          stop.style.display = "";
+        } else if (state === "error") {
+          txt.textContent = "ERROR";
+          stop.style.display = "none";
+        } else {
+          txt.textContent = "OFFLINE";
+          stop.style.display = "none";
+        }
+      }
+
+      function updateSteering(angle, latency, freeHeap, tensorUsed) {
+        const a = parseFloat(angle) || 0;
+        const l = parseInt(latency) || 0;
+        const h = parseInt(freeHeap) || 0;
+        const t = parseInt(tensorUsed) || 0;
+
+        document.getElementById("angleVal").textContent = a.toFixed(1) + "°";
+        const av = document.getElementById("angleVal");
+        if (Math.abs(a) > 5) av.classList.add("turning");
+        else av.classList.remove("turning");
+
+        const arrowGroup = document.getElementById("arrowGroup");
+        const clampedAngle = Math.max(-45, Math.min(45, a));
+        arrowGroup.style.transform = `rotate(${clampedAngle}deg)`;
+
+        const dL = document.getElementById("dirLeft");
+        const dS = document.getElementById("dirStraight");
+        const dR = document.getElementById("dirRight");
+        const lbl = document.getElementById("dirLabel");
+        dL.className = dS.className = dR.className = "dir-btn";
+        if (a < -8) {
+          dL.classList.add("active-left");
+          lbl.textContent = "◄ LEFT";
+          lbl.style.color = "var(--amber)";
+          document
+            .getElementById("arrowShape")
+            .setAttribute("fill", "var(--amber)");
+        } else if (a > 8) {
+          dR.classList.add("active-right");
+          lbl.textContent = "RIGHT ►";
+          lbl.style.color = "var(--amber)";
+          document
+            .getElementById("arrowShape")
+            .setAttribute("fill", "var(--amber)");
+        } else {
+          dS.classList.add("active-straight");
+          lbl.textContent = "▲ STRAIGHT";
+          lbl.style.color = "var(--accent)";
+          document
+            .getElementById("arrowShape")
+            .setAttribute("fill", "var(--accent)");
+        }
+
+        // Latency gauge (0-133ms)
+        const latPct = Math.min(1, l / 133);
+        document.getElementById("gaugeFill").style.strokeDashoffset = (
+          188 *
+          (1 - latPct)
+        ).toFixed(1);
+        const needleAngle = -90 + latPct * 180;
+        document.getElementById("gaugeNeedle").style.transform =
+          `rotate(${needleAngle}deg)`;
+        document.getElementById("latencyGaugeVal").textContent = l;
+
+        const lv = document.getElementById("latencyVal");
+        const lb = document.getElementById("latencyBar");
+        lv.textContent = l + " ms";
+        const latPct2 = Math.min(100, (l / 133) * 100);
+        lb.style.width = latPct2.toFixed(1) + "%";
+        lb.style.background =
+          l < 60 ? "var(--accent)" : l < 100 ? "var(--amber)" : "var(--red)";
+        lv.className =
+          "metric-val " + (l < 60 ? "good" : l < 100 ? "warn" : "bad");
+        document
+          .getElementById("latencyGaugeVal")
+          .setAttribute(
+            "fill",
+            l < 60 ? "#00e5a0" : l < 100 ? "#f0a500" : "#ff4444",
+          );
+
+        // Heap (assume ~512KB max)
+        const hKB = Math.round(h / 1024);
+        document.getElementById("heapVal").textContent = hKB + " KB";
+        document.getElementById("heapBar").style.width =
+          Math.min(100, (hKB / 512) * 100).toFixed(1) + "%";
+
+        // Tensor arena (1024 KB)
+        const tKB = Math.round(t / 1024);
+        document.getElementById("tensorVal").textContent = tKB + " / 1024 KB";
+        document.getElementById("tensorBar").style.width =
+          Math.min(100, (tKB / 1024) * 100).toFixed(1) + "%";
+      }
+
+      function updateFps(fps) {
+        document.getElementById("fpsVal").textContent = fps.toFixed(1) + " fps";
+        document.getElementById("fpsBar").style.width =
+          Math.min(100, (fps / 20) * 100).toFixed(1) + "%";
+        document.getElementById("fpsDisplay").textContent =
+          fps.toFixed(1) + " FPS";
+      }
+
+      function connectTocar() {
+        stopAll();
+        const ip = document.getElementById("ipInput").value.trim();
+        if (!ip) {
+          log("ERROR: Enter IP address", "error");
+          return;
+        }
+        log("Connecting to " + ip + "...", "info");
+        setStatus("error");
+
+        // Camera stream
+        const img = document.getElementById("cameraImg");
+        img.onload = () => {
+          document.getElementById("camPlaceholder").style.display = "none";
+          img.style.display = "block";
+          document.getElementById("camOverlay").style.display = "block";
+          document.getElementById("camNote").style.display = "block";
+          log("Camera stream active", "info");
+        };
+        img.onerror = () => {
+          log("Camera stream failed", "error");
+        };
+        img.src = "http://" + ip + "/stream";
+
+        // Poll status endpoint
+        pollingInterval = setInterval(() => {
+          fetch("http://" + ip + "/status")
+            .then((r) => r.json())
+            .then((d) => {
+              setStatus("connected");
+              updateSteering(d.a, d.l, d.h, d.t);
+              log(
+                `a=${parseFloat(d.a).toFixed(1)}° l=${d.l}ms heap=${Math.round(d.h / 1024)}KB tensor=${Math.round(d.t / 1024)}KB`,
+                "data",
+              );
+              frameCount++;
+            })
+            .catch((e) => {
+              setStatus("error");
+            });
+        }, 150);
+
+        startFpsCounter();
+        isDemo = false;
+      }
+
+      function startDemo() {
+        stopAll();
+        isDemo = true;
+        setStatus("demo");
+        log("DEMO MODE — simulated telemetry", "info");
+
+        const img = document.getElementById("cameraImg");
+        img.style.display = "none";
+        const ph = document.getElementById("camPlaceholder");
+        ph.innerHTML = `
+    <svg width="100%" height="100%" viewBox="0 0 128 128" preserveAspectRatio="xMidYMid slice">
+      <defs><linearGradient id="rd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1a2530"/><stop offset="100%" stop-color="#0a0f14"/></linearGradient></defs>
+      <rect width="128" height="128" fill="url(#rd)"/>
+      <polygon points="20,128 108,128 80,64 48,64" fill="#1e2830"/>
+      <polygon points="20,128 108,128 80,64 48,64" fill="none" stroke="#2a3a40" stroke-width="0.5"/>
+      <line x1="64" y1="128" x2="64" y2="72" stroke="#f0a500" stroke-width="0.8" stroke-dasharray="6,4" opacity="0.6"/>
+      <line x1="0" y1="64" x2="128" y2="64" stroke="#1e2830" stroke-width="0.5"/>
+      <rect width="128" height="64" fill="#0d1218" opacity="0.6"/>
+      <text x="64" y="32" font-size="6" fill="#4a6070" text-anchor="middle" font-family="Share Tech Mono,monospace">SIMULATED FRAME</text>
+      <text x="64" y="40" font-size="5" fill="#2a4050" text-anchor="middle" font-family="Share Tech Mono,monospace">128×128 RGB</text>
+    </svg>`;
+        ph.style.display = "flex";
+        document.getElementById("camOverlay").style.display = "block";
+
+        let t = 0;
+        demoInterval = setInterval(() => {
+          t += 0.05;
+          const angle =
+            25 * Math.sin(t * 0.7) +
+            6 * Math.sin(t * 2.1) +
+            3 * (Math.random() - 0.5);
+          const latency = 60 + Math.floor(Math.random() * 20);
+          const heap = (280 + Math.random() * 30) * 1024;
+          const tensor = (800 + Math.random() * 80) * 1024;
+          updateSteering(angle, latency, heap, tensor);
+          updateFps(15 + Math.random() * 3);
+          if (Math.floor(t * 20) % 35 === 0) {
+            log(`Inference: ${angle.toFixed(1)}° ${latency}ms`, "data");
+          }
+        }, 50);
+        startFpsCounter();
+      }
+
+      function startFpsCounter() {
+        if (fpsCalcInterval) clearInterval(fpsCalcInterval);
+        lastFpsTime = Date.now();
+        frameCount = 0;
+        fpsCalcInterval = setInterval(() => {
+          const now = Date.now();
+          const elapsed = (now - lastFpsTime) / 1000;
+          if (!isDemo) {
+            updateFps(frameCount / elapsed);
+          }
+          frameCount = 0;
+          lastFpsTime = now;
+        }, 1000);
+      }
+
+      function stopAll() {
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          pollingInterval = null;
+        }
+        if (demoInterval) {
+          clearInterval(demoInterval);
+          demoInterval = null;
+        }
+        if (fpsCalcInterval) {
+          clearInterval(fpsCalcInterval);
+          fpsCalcInterval = null;
+        }
+        const img = document.getElementById("cameraImg");
+        img.src = "";
+        img.style.display = "none";
+        document.getElementById("camOverlay").style.display = "none";
+        document.getElementById("camNote").style.display = "none";
+        document.getElementById("camPlaceholder").style.display = "flex";
+        document.getElementById("camPlaceholder").innerHTML = `
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4a6070" stroke-width="1.5">
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg><p>NO SIGNAL</p><p style="font-size:10px">Enter IP and connect</p>`;
+        isDemo = false;
+      }
+
+      function disconnect() {
+        stopAll();
+        setStatus("offline");
+        log("Disconnected", "warn");
+      }
+
+      log("Dashboard ready. Connect to ESP32 or use Demo Mode.", "info");
+      log("Status poll: http://[ip]/status", "data");
+    </script>
+  </body>
+</html>
