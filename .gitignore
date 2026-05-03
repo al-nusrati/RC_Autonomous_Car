@@ -1,0 +1,60 @@
+# ======================
+# ESP-IDF Build Outputs
+# ======================
+build/
+sdkconfig
+sdkconfig.old
+
+# Managed components (auto-downloaded)
+managed_components/
+
+# Dependency lock files (generated)
+dependencies.lock
+
+# ======================
+# Compiled Objects & Libs
+# ======================
+*.o
+*.a
+*.elf
+*.bin
+*.map
+*.hex
+*.lst
+*.bak
+
+# ======================
+# IDE / Editor
+# ======================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ======================
+# Python
+# ======================
+__pycache__/
+*.pyc
+
+# ======================
+# OS Files
+# ======================
+Desktop.ini
+
+# ======================
+# Project-specific
+# ======================
+# Exclude large model backups if not needed in repo
+# (uncomment if you don't want to track them)
+# main/best_model_mobilenet.h5
+# main/mobilenetv2_128_int8.tflite
+
+# Exclude backup firmware (keep only main_full.bak if needed)
+# main/main_autonomous.bak
+
+# Exclude generated C header for model if it's re-generatable
+# main/model.h
